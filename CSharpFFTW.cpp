@@ -16,10 +16,12 @@ FFTW::FFTW( unsigned int N )
 	this->outputBuffer = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex)*(N/2 + 1));
 
 	this->plan = fftwf_plan_dft_r2c_1d( N, inputBuffer, outputBuffer, FFTW_MEASURE );
+	this->iplan = fftwf_plan_dft_c2r_1d( N, outputBuffer, inputBuffer, FFTW_MEASURE );
 }
 
 FFTW::~FFTW() {
 	fftwf_destroy_plan( this->plan );
+	fftwf_destroy_plan( this->iplan );
 	fftwf_free( this->outputBuffer );
 	fftwf_free( this->inputBuffer );
 }
@@ -42,6 +44,26 @@ Platform::Array<Complex>^ FFTW::fft( const Platform::Array<float>^ input ) {
 
 	// The resultant spectrum is in outputBuffer!
 	Platform::Array<Complex>^ outputArray = ref new Platform::Array<Complex>((Complex *)this->outputBuffer, (this->N/2 + 1) );
+	return outputArray;
+}
+
+Platform::Array<float>^ FFTW::ifft( const Platform::Array<Complex>^ input ) {
+	// First, we copy from input into outputBuffer
+	memcpy( this->outputBuffer, input->Data, sizeof(Complex)*min(this->N/2 + 1, input->Length) );
+
+	// Zero-pad, if we need to (this is weird, but let's be consistent)
+	if( this->N/2 +1 > input->Length )
+		memset( this->outputBuffer + input->Length*sizeof(Complex), 0, sizeof(Complex)*(this->N/2 + 1 - input->Length) );
+
+	// Make fftw do its magic
+	fftwf_execute( this->iplan );
+
+	// Undo FFT scaling on inputBuffer
+	for( unsigned int i=0; i<this->N; ++i )
+		this->inputBuffer[i] /= this->N;
+
+	// The resultant spectrum is in inputBuffer!
+	Platform::Array<float>^ outputArray = ref new Platform::Array<float>((float *)this->inputBuffer, this->N );
 	return outputArray;
 }
 
